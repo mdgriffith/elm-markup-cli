@@ -13,3 +13,5 @@ Cargo.lock
 node_modules
 
 elm-stuff
+
+/runners/rust/elm-markup/target

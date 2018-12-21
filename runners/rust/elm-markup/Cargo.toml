@@ -1,0 +1,7 @@
+[package]
+name = "elm-markup"
+version = "0.1.0"
+authors = ["Matthew Griffith <mdg.griffith@gmail.com>"]
+
+[dependencies]
+clap = "2.26.0"
