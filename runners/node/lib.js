@@ -5,6 +5,7 @@ let minorVersion = 2;
 
 let vm = require("vm");
 let fs = require("fs");
+let fsExtra = require("fs-extra");
 let path = require("path");
 let child_process = require("child_process");
 let which = require("which");
@@ -20,6 +21,30 @@ let finder = require('./finder.js');
 let Generate = require('./Generate.js');
 let Find = require('./lib/Find.js');
 let glob = require('glob');
+const microtime = require('microtime');
+
+let track = [];
+
+function timeCheckpoint(name) {
+  track.push({ name: name, time: microtime.now() })
+}
+
+function relativize(tracked) {
+  let len = tracked.length;
+  let relative = [];
+  let prev = null;
+  for (var i = 0; i < len; i++) {
+    if (prev == null) {
+      relative.push({ name: tracked[i].name, time: 0 });
+      prev = tracked[i].time;
+    } else {
+      const data = { name: tracked[i].name, time: (tracked[i].time - prev) / 1000000 }
+      prev = tracked[i].time;
+      relative.push(data);
+    }
+  }
+  return relative;
+}
 
 function resolvePath(components) {
   if (components.length == 0) {
@@ -52,7 +77,25 @@ function listEntities(request, responsePort, statsPredicate) {
   }
 }
 
-function colorize(colorString, text) {
+function colorize(message) {
+  return bold(message.bold, underline(message.underline, add_color(message.color, message.text)));
+}
+function bold(add, text) {
+  if (add) {
+    return chalk.bold(text)
+  } else {
+    return text
+  }
+}
+function underline(add, text) {
+  if (add) {
+    return chalk.underline(text)
+  } else {
+    return text
+  }
+}
+
+function add_color(colorString, text) {
   switch (colorString) {
     case "yellow":
       return chalk.yellow(text);
@@ -66,9 +109,6 @@ function colorize(colorString, text) {
     case "green":
       return chalk.green(text);
 
-    case "underline":
-      return chalk.underline(text);
-
     case "cyan":
       return chalk.cyan(text);
 
@@ -79,18 +119,18 @@ function colorize(colorString, text) {
 
 function logError(context, error) {
 
-  var relativePath = path.relative(process.cwd(), context.markupFile);
+  var relativePath = path.relative(process.cwd(), context.sourcePath);
 
-  let parserText = colorize("yellow", spaceFront("with " + context.parserName));
-  let fileText = colorize("cyan", dashFill("-- " + error.name.toUpperCase(), " ./" + relativePath))
+  let parserText = add_color("yellow", spaceFront("with " + context.parser));
+  let fileText = add_color("cyan", dashFill("-- " + error.title.toUpperCase(), " ./" + relativePath))
 
-  let errorText = fileText + "\n" + parserText;
-  let errorLen = error.text.length;
+  let errorText = fileText + "\n" + parserText + "\n";
+  let errorLen = error.message.length;
 
   for (var i = 0; i < errorLen; i++) {
-    errorText = errorText + colorize(error.text[i].color, error.text[i].text);
+    errorText = errorText + colorize(error.message[i]);
   }
-  return errorText;
+  return errorText + "\n";
 }
 
 function spaceFront(val) {
@@ -103,163 +143,93 @@ function dashFill(start, end) {
   return start + " " + "-".repeat(remaining) + end;
 }
 
-
 var readElmiPath = require('elmi-to-json').paths['elmi-to-json'];
 
 
+// If we're calling this, it's because there was some modification that was made.
+//
 function findDocumentsInProject(elmPackageJsonPath) {
+
+  const targetFile = path.join(
+    elmPackageJsonPath,
+    'elm-stuff',
+    'generated-code',
+    'mdgriffith',
+    'elm-markup',
+    'interface.json'
+  );
+
+  let elmInterface = Find.interfaceIsOutofDate(elmPackageJsonPath, targetFile);
+
   return new Promise(function (resolve, reject) {
     function finish() {
-
-      var proc = spawn(readElmiPath, [], {
-        cwd: elmPackageJsonPath,
-        env: process.env,
-      });
-      var jsonStr = '';
-      var stderrStr = '';
-
-
-      proc.stdout.on('data', function (data) {
-        jsonStr += data;
-      });
-
-      proc.stderr.on('data', function (data) {
-        stderrStr += data;
-      });
-
-      proc.on('close', function (code) {
-        if (stderrStr !== '') {
-          reject(stderrStr);
-        } else if (code !== 0) {
-          reject('Finding test interfaces failed, exiting with code ' + code);
-        }
+      // console.log("Elm Interface");
+      // console.log(elmInterface);
+      // console.log(targetFile);
+      // console.log(readElmiPath);
+      if (elmInterface.expired) {
+        // /Users/matthewgriffith/elm-markup-cli/example/elm-stuff/generated-code/mdgriffith/elm-markup/
+        fsExtra.mkdirpSync(path.dirname(targetFile));
+        var proc = spawn(readElmiPath, ["--output=" + targetFile], {
+          cwd: elmPackageJsonPath,
+          env: process.env,
+        });
+        proc.on('close', function (code) {
+          var modules;
+          try {
+            const jsonStr = fs.readFileSync(targetFile);
+            modules = JSON.parse(jsonStr);
+          } catch (err) {
+            console.log(err);
+            reject('Received invalid JSON from test interface search: ' + err);
+          }
+          let filteredModules = filter_for_docs(modules)
+          return resolve(filteredModules);
+        });
+      } else {
         var modules;
-
         try {
+          const jsonStr = fs.readFileSync(targetFile);
           modules = JSON.parse(jsonStr);
         } catch (err) {
           reject('Received invalid JSON from test interface search: ' + err);
         }
-
-        var filteredModules = _.flatMap(modules, function (mod) {
-          var eligible = _.flatMap(_.toPairs(mod.interface.types), function (
-            pair
-          ) {
-            var name = pair[0];
-            var annotation = pair[1].annotation;
-            if (
-              annotation.moduleName &&
-              annotation.moduleName.package === 'mdgriffith/elm-markup' &&
-              annotation.moduleName.module === 'Mark' &&
-              annotation.name === 'Document'
-            ) {
-              return name;
-            } else {
-              return [];
-            }
-          });
-
-          // Must have at least 1 value of type Test. Otherwise ignore this module.
-          if (eligible.length > 0) {
-            return [{ name: mod.moduleName, tests: eligible }];
-          } else {
-            return [];
-          }
-        });
-
+        let filteredModules = filter_for_docs(modules)
         return resolve(filteredModules);
-      });
+      }
     }
-
     return finish();
   });
 }
 
 
-function findDocumentsOld(
-  elmPackageJsonPath /*: string*/,
-  testFilePaths /*: Array<string>*/,
-  sourceDirs /*: Array<string>*/,
-) /*:Promise<Array<Object>>*/ {
-  return new Promise(function (resolve, reject) {
-    function finish() {
+function filter_for_docs(modules) {
+  let filtered = _.flatMap(modules, function (mod) {
+    var eligible = _.flatMap(_.toPairs(mod.interface.types), function (
+      pair
+    ) {
+      var name = pair[0];
+      var annotation = pair[1].annotation;
+      if (
+        annotation.moduleName &&
+        annotation.moduleName.package === 'mdgriffith/elm-markup' &&
+        annotation.moduleName.module === 'Mark' &&
+        annotation.name === 'Document'
+      ) {
+        return name;
+      } else {
+        return [];
+      }
+    });
 
-      var proc = spawn(readElmiPath, [], {
-        cwd: elmPackageJsonPath,
-        env: process.env,
-      });
-      var jsonStr = '';
-      var stderrStr = '';
-
-
-      proc.stdout.on('data', function (data) {
-        jsonStr += data;
-      });
-
-      proc.stderr.on('data', function (data) {
-        stderrStr += data;
-      });
-
-      proc.on('close', function (code) {
-        if (stderrStr !== '') {
-          reject(stderrStr);
-        } else if (code !== 0) {
-          reject('Finding test interfaces failed, exiting with code ' + code);
-        }
-        var modules;
-
-        try {
-          modules = JSON.parse(jsonStr);
-        } catch (err) {
-          reject('Received invalid JSON from test interface search: ' + err);
-        }
-
-        var filteredModules = _.flatMap(modules, function (mod) {
-          var eligible = _.flatMap(_.toPairs(mod.interface.types), function (
-            pair
-          ) {
-            var name = pair[0];
-            var annotation = pair[1].annotation;
-            if (
-              annotation.moduleName &&
-              annotation.moduleName.package === 'mdgriffith/elm-markup' &&
-              annotation.moduleName.module === 'Mark' &&
-              annotation.name === 'Document'
-            ) {
-              return name;
-            } else {
-              return [];
-            }
-          });
-
-          // Must have at least 1 value of type Test. Otherwise ignore this module.
-          if (eligible.length > 0) {
-            return [{ name: mod.moduleName, tests: eligible }];
-          } else {
-            return [];
-          }
-        });
-
-        return verifyModules(testFilePaths)
-          .then(function () {
-            return Promise.all(
-              _.map(
-                _.flatMap(
-                  filteredModules,
-                  toPathsAndModules(testFilePaths, sourceDirs)
-                ),
-                filterExposing
-              )
-            )
-              .then(resolve)
-              .catch(reject);
-          })
-          .catch(reject);
-      });
+    // Must have at least 1 value of type Test. Otherwise ignore this module.
+    if (eligible.length > 0) {
+      return [{ name: mod.moduleName, tests: eligible }];
+    } else {
+      return [];
     }
-
-    return finish();
   });
+  return filtered;
 }
 
 
@@ -415,23 +385,17 @@ function parserVM(absolutePath, moduleName, asJson) {
   script.output = output;
 
   errorPorts.subscribe(function (parsed) {
-    if (parsed.errors.length == 0) {
+    if (asJson) {
+      script.output.push(parsed);
+    } else if (parsed.problems.length == 0) {
       console.log('');
       console.log("    " + chalk.green("✓") + " Successfully parsed markup!");
-      console.log('');
     } else {
-      if (asJson) {
-        script.output.push(parsed);
+      let errorLen = parsed.problems.length;
 
-      } else {
-        let errorLen = parsed.errors.length;
-
-        for (var i = 0; i < errorLen; i++) {
-          const err = logError(parsed, parsed.errors[i]);
-          script.output.push(err);
-          // console.log(err);
-        }
-
+      for (var i = 0; i < errorLen; i++) {
+        const err = logError(parsed, parsed.problems[i]);
+        script.output.push(err);
       }
     }
   });
@@ -440,7 +404,16 @@ function parserVM(absolutePath, moduleName, asJson) {
 
 }
 
-function checkExactly(base, elmFiles, markupFiles, asJson) {
+function exists(filepath) {
+  try {
+    fs.accessSync(filepath);
+    return true
+  } catch (error) {
+    return false
+  }
+}
+
+function checkExactly(base, elmFiles, sourcePaths, asJson) {
 
   // Find path to corresponding elm.json
   let elmJsonPath = findUp.sync("elm.json", { cwd: base });
@@ -466,28 +439,34 @@ function checkExactly(base, elmFiles, markupFiles, asJson) {
     process.exit(1);
   }
 
-  // Create temporary JS file for Elm compiler output
-  let outputJsFile = null;
-  try {
-    outputJsFile = tmp.fileSync({ postfix: ".js" }).name;
-  } catch (error) {
-    console.log("Could not create temporary JavaScript file");
+  if (elmFiles.length != 0) {
+
+    // Create temporary JS file for Elm compiler output
+    // let outputJsFile = null;
+    // try {
+    //   outputJsFile = tmp.fileSync({ postfix: ".js" }).name;
+    // } catch (error) {
+    //   console.log("Could not create temporary JavaScript file");
+    // }
+
+    timeCheckpoint("created temporary files and found elm.json + elm executable")
+    // Try to compile Elm file
+    try {
+      child_process.execFileSync(
+        elmExecutable,
+        ["make", "--output=/dev/null"].concat(elmFiles),
+        { cwd: elmJsonDirectory, encoding: "utf8" }
+      );
+    } catch (error) {
+      process.exit(1);
+    }
   }
 
-  // Try to compile Elm file
-  try {
-    child_process.execFileSync(
-      elmExecutable,
-      ["make", "--optimize", "--output=" + outputJsFile].concat(elmFiles),
-      { cwd: elmJsonDirectory, encoding: "utf8" }
-    );
-  } catch (error) {
-    process.exit(1);
-  }
+  timeCheckpoint("elm file compilation")
   findDocumentsInProject(
-    elmJsonDirectory//, [absolutePath], [directory]
+    elmJsonDirectory
   ).then(function (documents) {
-
+    timeCheckpoint("documents found")
 
     const returnValues = Generate.generateElmJson(
       elmJsonDirectory,
@@ -502,19 +481,33 @@ function checkExactly(base, elmFiles, markupFiles, asJson) {
       documents,
       generatedSrc
     );
+    timeCheckpoint("generated files")
 
     const compiledRunnerFile = path.join(generatedCodeDir, "runParser.js")
 
-    // Try to compile Elm file
-    try {
-      child_process.execFileSync(
-        elmExecutable,
-        ["make", "--optimize", "--output=" + compiledRunnerFile, generated.file],
-        { cwd: generatedCodeDir, encoding: "utf8" }
-      );
-    } catch (error) {
-      process.exit(1);
+    const interfaceFile = path.join(
+      elmJsonDirectory,
+      'elm-stuff',
+      'generated-code',
+      'mdgriffith',
+      'elm-markup',
+      'interface.json'
+    );
+
+    if (exists(compiledRunnerFile) && elmFiles.length == 0 && Find.newerThan(compiledRunnerFile, interfaceFile)) {
+    } else {
+      // Try to compile Elm file
+      try {
+        child_process.execFileSync(
+          elmExecutable,
+          ["make", "--optimize", "--output=" + compiledRunnerFile, generated.file],
+          { cwd: generatedCodeDir, encoding: "utf8" }
+        );
+      } catch (error) {
+        process.exit(1);
+      }
     }
+    timeCheckpoint("elm runner compilation")
 
     var elmParser = parserVM(compiledRunnerFile, generated.name, asJson);
 
@@ -524,20 +517,20 @@ function checkExactly(base, elmFiles, markupFiles, asJson) {
       const documentsLength = documents[i].tests.length;
       for (var d = 0; d < documentsLength; d++) {
 
-        const markupFileCount = markupFiles.length;
-        for (var m = 0; m < markupFileCount; m++) {
+        const sourcePathCount = sourcePaths.length;
+        for (var m = 0; m < sourcePathCount; m++) {
 
           var source = null;
           try {
-            source = fs.readFileSync(markupFiles[m], "utf8");
+            source = fs.readFileSync(sourcePaths[m], "utf8");
           } catch (error) {
             console.log(error.message);
             process.exit(1);
           }
 
           elmParser.ports.parse.send({
-            parserName: documents[i].name + "." + documents[i].tests[d],
-            markupFile: markupFiles[m],
+            parser: documents[i].name + "." + documents[i].tests[d],
+            sourcePath: sourcePaths[m],
             source: source
           });
         }
@@ -546,23 +539,36 @@ function checkExactly(base, elmFiles, markupFiles, asJson) {
 
     setTimeout(function () {
       if (asJson) {
-        console.log(JSON.stringify(elmParser.output));
+        let errors = {
+          type: "parse-errors",
+          errors: elmParser.output
+        }
+
+        console.log(JSON.stringify(errors));
       } else {
         console.log(elmParser.output.join("\n"));
       }
+      timeCheckpoint("fin");
+      // Print checkpoint times
+      console.log(relativize(track));
     }, 0)
 
   })
 
 }
 function parseAll() {
-  // find all elm files in source directories
+  // find all .elm files in source directories
   // find all .emu files.
   let cwd = process.cwd();
+  timeCheckpoint("start")
   const sources = Find.markupFiles(cwd);
-  const elmFiles = Find.elmFiles(cwd);
+  timeCheckpoint("markup found")
+  // const elmFiles = Find.elmFiles(cwd);
+  const elmFiles = Find.modifiedElmFiles(cwd);
+  timeCheckpoint("elm found")
   const relativeElmFiles = _.map(elmFiles, function (file) { return path.relative(cwd, file); })
   checkExactly(cwd, relativeElmFiles, sources, false);
+
 }
 function parseAllJson() {
   // find all elm files in source directories

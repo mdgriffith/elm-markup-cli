@@ -120,6 +120,7 @@ function generateElmJson(
     );
     var nodeTestRunnerElmJson = fs.readJsonSync(nodeTestRunnerElmJsonPath);
 
+
     addDirectDependencies(
         nodeTestRunnerElmJson['dependencies']['direct'],
         isPackageProject,

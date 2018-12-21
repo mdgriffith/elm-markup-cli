@@ -8,22 +8,25 @@ import Platform
 
 
 type Msg
-    = Parse { parserName : String, markupFile : String, source : String }
+    = Parse { parser : String, sourcePath : String, source : String }
 
 
 parseForErrors doc file =
     case Mark.parse doc file.source of
         Ok _ ->
-            { parserName = file.parserName, markupFile = file.markupFile, errors = [] }
+            { parser = file.parser
+            , sourcePath = file.sourcePath
+            , problems = []
+            }
 
         Err errors ->
             -- let
             --     _ =
             --         Debug.log "errors" errors
             -- in
-            { parserName = file.parserName
-            , markupFile = file.markupFile
-            , errors = Error.toJson file.source errors
+            { parser = file.parser
+            , sourcePath = file.sourcePath
+            , problems = Error.toJson file.source errors
             }
 
 
@@ -39,10 +42,10 @@ worker documents =
         }
 
 
-port error : { parserName : String, markupFile : String, errors : List Error.Error } -> Cmd msg
+port error : { parser : String, sourcePath : String, problems : List Error.Error } -> Cmd msg
 
 
-port parse : ({ parserName : String, markupFile : String, source : String } -> msg) -> Sub msg
+port parse : ({ parser : String, sourcePath : String, source : String } -> msg) -> Sub msg
 
 
 update documents msg model =
@@ -54,9 +57,9 @@ update documents msg model =
 
 
 parseDoc documents file =
-    case Dict.get file.parserName documents of
+    case Dict.get file.parser documents of
         Nothing ->
-            { parserName = file.parserName, markupFile = file.markupFile, errors = [] }
+            { parser = file.parser, sourcePath = file.sourcePath, problems = [] }
 
         Just doc ->
             parseForErrors doc file
