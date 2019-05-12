@@ -75,14 +75,6 @@ function to_elmi(relative_path) {
 
 function interfaceIsOutofDate(directory, interfaceFile) {
 
-    let elmiFiles = glob.sync('/elm-stuff/**/*.elmi', {
-        root: directory,
-        nocase: true,
-        stat: true,
-        ignore: '/elm-stuff/**/+(node_modules|elm-stuff)/**',
-        nodir: true,
-    })
-
     let interfaceStat;
     try {
         interfaceStat = fs.statSync(interfaceFile);
@@ -91,6 +83,14 @@ function interfaceIsOutofDate(directory, interfaceFile) {
     }
 
     let expired = false;
+
+    let elmiFiles = glob.sync('/elm-stuff/**/*.elmi', {
+        root: directory,
+        nocase: true,
+        stat: true,
+        ignore: '/elm-stuff/**/+(node_modules|elm-stuff)/**',
+        nodir: true,
+    })
 
     const elmiFilesLength = elmiFiles.length;
     for (var i = 0; i < elmiFilesLength; i++) {

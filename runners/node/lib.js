@@ -163,10 +163,6 @@ function findDocumentsInProject(elmPackageJsonPath) {
 
   return new Promise(function (resolve, reject) {
     function finish() {
-      // console.log("Elm Interface");
-      // console.log(elmInterface);
-      // console.log(targetFile);
-      // console.log(readElmiPath);
       if (elmInterface.expired) {
         // /Users/matthewgriffith/elm-markup-cli/example/elm-stuff/generated-code/mdgriffith/elm-markup/
         fsExtra.mkdirpSync(path.dirname(targetFile));
@@ -210,9 +206,10 @@ function filter_for_docs(modules) {
     ) {
       var name = pair[0];
       var annotation = pair[1].annotation;
+
       if (
         annotation.moduleName &&
-        annotation.moduleName.package === 'mdgriffith/elm-markup' &&
+        (annotation.moduleName.package === 'mdgriffith/elm-markup' || annotation.moduleName.package === 'author/project') &&
         annotation.moduleName.module === 'Mark' &&
         annotation.name === 'Document'
       ) {
@@ -222,7 +219,7 @@ function filter_for_docs(modules) {
       }
     });
 
-    // Must have at least 1 value of type Test. Otherwise ignore this module.
+    // Must have at least 1 value of type Document. Otherwise ignore this module.
     if (eligible.length > 0) {
       return [{ name: mod.moduleName, tests: eligible }];
     } else {
@@ -388,8 +385,12 @@ function parserVM(absolutePath, moduleName, asJson) {
     if (asJson) {
       script.output.push(parsed);
     } else if (parsed.problems.length == 0) {
+
+
+      const src = parsed.sourcePath.replace(process.cwd() + "/", "");
+
       console.log('');
-      console.log("    " + chalk.green("✓") + " Successfully parsed markup!");
+      console.log("    " + chalk.green("✓") + " " + src + " successfully parsed by " + parsed.parser);
     } else {
       let errorLen = parsed.problems.length;
 
@@ -423,6 +424,7 @@ function checkExactly(base, elmFiles, sourcePaths, asJson) {
     );
     process.exit(1);
   }
+
   let elmJsonDirectory = path.dirname(elmJsonPath);
 
   // Find Elm executable
@@ -449,8 +451,9 @@ function checkExactly(base, elmFiles, sourcePaths, asJson) {
     //   console.log("Could not create temporary JavaScript file");
     // }
 
-    timeCheckpoint("created temporary files and found elm.json + elm executable")
+    // timeCheckpoint("created temporary files and found elm.json + elm executable")
     // Try to compile Elm file
+
     try {
       child_process.execFileSync(
         elmExecutable,
@@ -462,11 +465,11 @@ function checkExactly(base, elmFiles, sourcePaths, asJson) {
     }
   }
 
-  timeCheckpoint("elm file compilation")
+  // timeCheckpoint("elm file compilation")
   findDocumentsInProject(
     elmJsonDirectory
   ).then(function (documents) {
-    timeCheckpoint("documents found")
+
 
     const returnValues = Generate.generateElmJson(
       elmJsonDirectory,
@@ -481,7 +484,6 @@ function checkExactly(base, elmFiles, sourcePaths, asJson) {
       documents,
       generatedSrc
     );
-    timeCheckpoint("generated files")
 
     const compiledRunnerFile = path.join(generatedCodeDir, "runParser.js")
 
@@ -507,51 +509,56 @@ function checkExactly(base, elmFiles, sourcePaths, asJson) {
         process.exit(1);
       }
     }
-    timeCheckpoint("elm runner compilation")
+    // timeCheckpoint("elm runner compilation")
 
     var elmParser = parserVM(compiledRunnerFile, generated.name, asJson);
 
     const modulesLength = documents.length;
-    for (var i = 0; i < modulesLength; i++) {
+    if (modulesLength == 0) {
+      console.log("")
+      console.log("    No Mark.Documents found, are you sure it's exposed?")
+      console.log("")
+    } else {
+      for (var i = 0; i < modulesLength; i++) {
 
-      const documentsLength = documents[i].tests.length;
-      for (var d = 0; d < documentsLength; d++) {
+        const documentsLength = documents[i].tests.length;
+        for (var d = 0; d < documentsLength; d++) {
 
-        const sourcePathCount = sourcePaths.length;
-        for (var m = 0; m < sourcePathCount; m++) {
+          const sourcePathCount = sourcePaths.length;
+          for (var m = 0; m < sourcePathCount; m++) {
 
-          var source = null;
-          try {
-            source = fs.readFileSync(sourcePaths[m], "utf8");
-          } catch (error) {
-            console.log(error.message);
-            process.exit(1);
+            var source = null;
+            try {
+              source = fs.readFileSync(sourcePaths[m], "utf8");
+            } catch (error) {
+              console.log(error.message);
+              process.exit(1);
+            }
+
+            elmParser.ports.parse.send({
+              parser: documents[i].name + "." + documents[i].tests[d],
+              sourcePath: sourcePaths[m],
+              source: source
+            });
+          }
+        }
+      }
+
+      setTimeout(function () {
+        if (asJson) {
+          let errors = {
+            type: "parse-errors",
+            errors: elmParser.output
           }
 
-          elmParser.ports.parse.send({
-            parser: documents[i].name + "." + documents[i].tests[d],
-            sourcePath: sourcePaths[m],
-            source: source
-          });
+          console.log(JSON.stringify(errors));
+        } else {
+          console.log(elmParser.output.join("\n"));
         }
-      }
+
+      }, 0)
     }
 
-    setTimeout(function () {
-      if (asJson) {
-        let errors = {
-          type: "parse-errors",
-          errors: elmParser.output
-        }
-
-        console.log(JSON.stringify(errors));
-      } else {
-        console.log(elmParser.output.join("\n"));
-      }
-      timeCheckpoint("fin");
-      // Print checkpoint times
-      console.log(relativize(track));
-    }, 0)
 
   })
 
@@ -560,15 +567,12 @@ function parseAll() {
   // find all .elm files in source directories
   // find all .emu files.
   let cwd = process.cwd();
-  timeCheckpoint("start")
+
   const sources = Find.markupFiles(cwd);
-  timeCheckpoint("markup found")
   // const elmFiles = Find.elmFiles(cwd);
   const elmFiles = Find.modifiedElmFiles(cwd);
-  timeCheckpoint("elm found")
   const relativeElmFiles = _.map(elmFiles, function (file) { return path.relative(cwd, file); })
   checkExactly(cwd, relativeElmFiles, sources, false);
-
 }
 function parseAllJson() {
   // find all elm files in source directories
