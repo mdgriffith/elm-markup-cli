@@ -2,8 +2,10 @@
 
 "use strict";
 
+var path = require('path')
+
 const optionDefinitions = [
-  { name: 'report', type: String, defaultValue: 'print' },
+  { name: 'report', type: String, defaultValue: 'console' },
   { name: 'version', type: Boolean }
 ]
 
@@ -13,15 +15,14 @@ const commandLineArgs = require('command-line-args');
 const options = commandLineArgs(optionDefinitions);
 
 if (options.version) {
-  console.log("1.0.0")
+  console.log(require(path.join(__dirname, '..', '..', 'package.json')).version);
 } else {
-
   switch (options.report) {
     case 'json':
       Mark.parseAllJson();
       break;
 
-    case 'print':
+    case 'console':
       Mark.parseAll();
       break;
 
