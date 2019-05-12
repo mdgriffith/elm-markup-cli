@@ -1,4 +1,4 @@
-module Main exposing (document, main, source)
+module Main exposing (document, main)
 
 {-| A /very/ simple blog post with a custom inline element for some cool text formatting.
 
@@ -6,28 +6,84 @@ This is to get you started.
 
 -}
 
+import Browser
 import Html exposing (Html)
 import Html.Attributes as Attr
+import Http
 import Mark
 import Mark.Error
 
 
 main =
-    case Mark.compile document source of
-        Mark.Success html ->
-            Html.div [] html.body
+    Browser.document
+        { init = init
+        , view = view
+        , update = update
+        , subscriptions = always Sub.none
+        }
 
-        Mark.Almost { result, errors } ->
-            -- This is the case where there has been an error,
-            -- but it has been caught by `Mark.onError` and is still rendereable.
-            Html.div []
-                [ Html.div [] (viewErrors errors)
-                , Html.div [] result.body
-                ]
 
-        Mark.Failure errors ->
-            Html.div []
-                (viewErrors errors)
+init () =
+    ( { source = Nothing }
+    , Http.get
+        { url = "/notes/Note.emu"
+        , expect = Http.expectString GotSrc
+        }
+    )
+
+
+type alias Model =
+    { source : Maybe String
+    }
+
+
+type Msg
+    = GotSrc (Result Http.Error String)
+
+
+update : Msg -> Model -> ( Model, Cmd Msg )
+update msg model =
+    case msg of
+        GotSrc result ->
+            case result of
+                Ok src ->
+                    ( { model | source = Just src }
+                    , Cmd.none
+                    )
+
+                Err err ->
+                    let
+                        _ =
+                            Debug.log "err" err
+                    in
+                    ( model, Cmd.none )
+
+
+view model =
+    { title = ""
+    , body =
+        [ case model.source of
+            Nothing ->
+                Html.text "Source not received yet"
+
+            Just source ->
+                case Mark.compile document source of
+                    Mark.Success html ->
+                        Html.div [] html.body
+
+                    Mark.Almost { result, errors } ->
+                        -- This is the case where there has been an error,
+                        -- but it has been caught by `Mark.onError` and is still rendereable.
+                        Html.div []
+                            [ Html.div [] (viewErrors errors)
+                            , Html.div [] result.body
+                            ]
+
+                    Mark.Failure errors ->
+                        Html.div []
+                            (viewErrors errors)
+        ]
+    }
 
 
 viewErrors errors =
@@ -244,18 +300,3 @@ renderItem (Mark.Item item) =
         [ Html.div [] item.content
         , renderList item.children
         ]
-
-
-
-{- Article Source
-
-   Note: Here we're defining our source inline, but checkout the External Files example.
-
-   External files have a syntax highlighter in VS Code, and a CLI utility to check for errors.  It's a way better experience!
-
--}
--- [Lorem Ipsum is simply---]{drop}}dummy text of the printing and [typesetting industry]{link| url = http://mechanical-elephant.com}. Lorem Ipsum has been the industry's /standard/ dummy text ever since the 1500's, when an "unknown printer" took a galley of type and scrambled it to<>make a type specimen book. It has survived not only five centuries, but also the leap into electronic typesetting, remaining essentially unchanged. It was *popularised* in the 1960's with the release of Letraset sheets containing Lorem Ipsum passages, and more recently with desktop publishing software like Aldus PageMaker including versions of Lorem Ipsum.
-
-
-source =
-    ""
