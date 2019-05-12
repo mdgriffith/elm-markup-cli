@@ -1,8 +1,8 @@
 "use strict";
 
-let majorVersion = 4;
-let minorVersion = 2;
 
+
+var Compile = require('./compile.js');
 let vm = require("vm");
 let fs = require("fs");
 let fsExtra = require("fs-extra");
@@ -10,17 +10,13 @@ let path = require("path");
 let child_process = require("child_process");
 let which = require("which");
 let findUp = require("find-up");
-let tmp = require("tmp");
-let rimraf = require("rimraf");
-let os = require("os");
 const chalk = require('chalk');
 let firstline = require('firstline');
 let spawn = require('cross-spawn');
 let _ = require('lodash');
 let finder = require('./finder.js');
-let Generate = require('./Generate.js');
+let Generate = require('./generate.js');
 let Find = require('./lib/Find.js');
-let glob = require('glob');
 const microtime = require('microtime');
 
 let track = [];
@@ -118,7 +114,6 @@ function add_color(colorString, text) {
 }
 
 function logError(context, error) {
-
   var relativePath = path.relative(process.cwd(), context.sourcePath);
 
   let parserText = add_color("yellow", spaceFront("with " + context.parser));
@@ -168,7 +163,8 @@ function findDocumentsInProject(elmPackageJsonPath) {
         fsExtra.mkdirpSync(path.dirname(targetFile));
         var proc = spawn(readElmiPath, ["--output=" + targetFile], {
           cwd: elmPackageJsonPath,
-          env: process.env,
+          env: process.env
+
         });
         proc.on('close', function (code) {
           var modules;
@@ -176,7 +172,6 @@ function findDocumentsInProject(elmPackageJsonPath) {
             const jsonStr = fs.readFileSync(targetFile);
             modules = JSON.parse(jsonStr);
           } catch (err) {
-            console.log(err);
             reject('Received invalid JSON from test interface search: ' + err);
           }
           let filteredModules = filter_for_docs(modules)
@@ -374,7 +369,8 @@ function parserVM(absolutePath, moduleName, asJson) {
   }
 
   // Run Elm code to create the 'Elm' object
-  vm.runInThisContext(compiledJs);
+  // We reroute stdout and stderr to data
+  captureStdout(() => { vm.runInThisContext(compiledJs) })
 
   let script = global["Elm"].Mark.Generated[moduleName].init();
   let errorPorts = script.ports.error;
@@ -386,7 +382,6 @@ function parserVM(absolutePath, moduleName, asJson) {
       script.output.push(parsed);
     } else if (parsed.problems.length == 0) {
 
-
       const src = parsed.sourcePath.replace(process.cwd() + "/", "");
 
       console.log('');
@@ -395,6 +390,8 @@ function parserVM(absolutePath, moduleName, asJson) {
       let errorLen = parsed.problems.length;
 
       for (var i = 0; i < errorLen; i++) {
+
+
         const err = logError(parsed, parsed.problems[i]);
         script.output.push(err);
       }
@@ -404,6 +401,28 @@ function parserVM(absolutePath, moduleName, asJson) {
   return script;
 
 }
+
+function captureStdout(callback) {
+  var output = '', old_write = process.stdout.write
+  var err = '', old_err = process.stderr.write
+
+  // start capture
+  process.stdout.write = function (str, encoding, fd) {
+    output += str
+  }
+  process.stderr.write = function (str, encoding, fd) {
+    err += str
+  }
+
+  var result = callback()
+
+  // end capture
+  process.stdout.write = old_write
+  process.stderr.write = old_err
+
+  return { output: output, error: err, result: result }
+}
+
 
 function exists(filepath) {
   try {
@@ -441,31 +460,38 @@ function checkExactly(base, elmFiles, sourcePaths, asJson) {
     process.exit(1);
   }
 
+
+  // Compile.compileAll(
+  //   elmFiles,
+  //   elmJsonDirectory,
+  //   false, // verbose
+  //   elmExecutable,
+  //   // args.report
+  //   undefined // report (not json for this case)
+  // )
+  //   .then(function () {
+  //     process.exit(0);
+  //   })
+  //   .catch(function (err) {
+  //     process.exit(1);
+  //   });
+
+
   if (elmFiles.length != 0) {
 
-    // Create temporary JS file for Elm compiler output
-    // let outputJsFile = null;
-    // try {
-    //   outputJsFile = tmp.fileSync({ postfix: ".js" }).name;
-    // } catch (error) {
-    //   console.log("Could not create temporary JavaScript file");
-    // }
-
-    // timeCheckpoint("created temporary files and found elm.json + elm executable")
-    // Try to compile Elm file
-
     try {
+
       child_process.execFileSync(
         elmExecutable,
         ["make", "--output=/dev/null"].concat(elmFiles),
         { cwd: elmJsonDirectory, encoding: "utf8" }
       );
+
     } catch (error) {
       process.exit(1);
     }
   }
 
-  // timeCheckpoint("elm file compilation")
   findDocumentsInProject(
     elmJsonDirectory
   ).then(function (documents) {
@@ -502,14 +528,15 @@ function checkExactly(base, elmFiles, sourcePaths, asJson) {
       try {
         child_process.execFileSync(
           elmExecutable,
-          ["make", "--optimize", "--output=" + compiledRunnerFile, generated.file],
-          { cwd: generatedCodeDir, encoding: "utf8" }
+          ["make", "--output=" + compiledRunnerFile, generated.file],
+          { cwd: generatedCodeDir, encoding: "utf8", stdio: 'pipe' }
         );
+
       } catch (error) {
+
         process.exit(1);
       }
     }
-    // timeCheckpoint("elm runner compilation")
 
     var elmParser = parserVM(compiledRunnerFile, generated.name, asJson);
 
@@ -550,18 +577,13 @@ function checkExactly(base, elmFiles, sourcePaths, asJson) {
             type: "parse-errors",
             errors: elmParser.output
           }
-
           console.log(JSON.stringify(errors));
         } else {
           console.log(elmParser.output.join("\n"));
         }
-
       }, 0)
     }
-
-
   })
-
 }
 function parseAll() {
   // find all .elm files in source directories
@@ -584,5 +606,4 @@ function parseAllJson() {
   checkExactly(cwd, relativeElmFiles, sources, true);
 }
 
-// module.exports = function (inputFileName, sourceFileName, commandLineArgs) {
 module.exports = { parseAll, parseAllJson }

@@ -137,11 +137,7 @@ function generateElmJson(
             isPackageProject,
             testElmJson
         );
-        // addDirectDependencies(
-        //     projectElmJson['test-dependencies'],
-        //     isPackageProject,
-        //     testElmJson
-        // );
+
         // package projects don't explicitly list their transitive dependencies,
         // to we have to figure out what they are.  We write the elm.json that
         // we have so far, and run elm to see what it thinks is missing.
@@ -164,15 +160,7 @@ function generateElmJson(
             projectElmJson['dependencies']['indirect'],
             testElmJson
         );
-        // addDirectDependencies(
-        //     projectElmJson['test-dependencies']['direct'],
-        //     isPackageProject,
-        //     testElmJson
-        // );
-        // addIndirectDependencies(
-        //     projectElmJson['test-dependencies']['indirect'],
-        //     testElmJson
-        // );
+
     }
 
     // Make all the source-directories absolute, and introduce a new one.
@@ -268,6 +256,7 @@ function askElmForMissingTransitiveDependencies(
     pathToElmBinary,
     pathToElmProject
 ) {
+
     var result = spawn.sync(pathToElmBinary, ['make', '--report=json'], {
         silent: true,
         env: process.env,
@@ -361,14 +350,11 @@ function generateMainModule(
         'import Mark.Runner',
         '',
         'documents =',
-        '    Dict.fromList [',
-        '       ' + _.flatten(documents).join(', '),
-        // '        (' + '"Main.myDocument"' + ',' + 'Main.myDocument' + ')',
+        '    Dict.fromList',
+        '        [ ' + _.flatten(documents).join('        , '),
         '        ]',
         '',
         'main = Mark.Runner.worker documents'
-
-
     ].join('\n');
 
     // Generate a filename that incorporates the hash of file contents.
@@ -380,7 +366,7 @@ function generateMainModule(
     const moduleName = 'Main' + salt;
     const mainPath = path.join(generatedSrc, 'Mark', 'Generated');
     const mainFile = path.join(mainPath, moduleName + '.elm');
-    // We'll be putting the generated Main in something like this:
+    // We'll put the generated Main in something like this:
     //
     // my-project-name/elm-stuff/generated-code/elm-community/elm-test/src/Test/Generated/Main123456.elm
     const testFileContents = [
@@ -390,7 +376,6 @@ function generateMainModule(
 
     // Make sure src/Test/Generated/ exists so we can write the file there.
     fs.mkdirpSync(mainPath);
-
 
     fs.writeFileSync(mainFile, testFileContents);
 
