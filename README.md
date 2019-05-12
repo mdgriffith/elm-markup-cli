@@ -27,3 +27,6 @@ elm-markup --report=json
 ```
 
 
+## Previewing Documents
+
+This packge doesn't handle previewing what a document would look like because that's probably better handled by your elm application and a tool like [`elm-live`](https://github.com/wking-io/elm-live)
