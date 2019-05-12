@@ -16,3 +16,4 @@ elm-stuff
 
 /runners/rust/elm-markup/target
 example/mark
+example/index.html
