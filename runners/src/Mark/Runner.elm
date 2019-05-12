@@ -1,9 +1,8 @@
 port module Mark.Runner exposing (worker)
 
 import Dict
-import Error
 import Mark
-import Mark.Default
+import Mark.Error
 import Platform
 
 
@@ -13,20 +12,22 @@ type Msg
 
 parseForErrors doc file =
     case Mark.parse doc file.source of
-        Ok _ ->
+        Mark.Success _ ->
             { parser = file.parser
             , sourcePath = file.sourcePath
             , problems = []
             }
 
-        Err errors ->
-            -- let
-            --     _ =
-            --         Debug.log "errors" errors
-            -- in
+        Mark.Almost { errors } ->
             { parser = file.parser
             , sourcePath = file.sourcePath
-            , problems = Error.toJson file.source errors
+            , problems = List.map Mark.Error.toDetails errors
+            }
+
+        Mark.Failure errors ->
+            { parser = file.parser
+            , sourcePath = file.sourcePath
+            , problems = List.map Mark.Error.toDetails errors
             }
 
 
@@ -42,7 +43,7 @@ worker documents =
         }
 
 
-port error : { parser : String, sourcePath : String, problems : List Error.Error } -> Cmd msg
+port error : { parser : String, sourcePath : String, problems : List Mark.Error.Details } -> Cmd msg
 
 
 port parse : ({ parser : String, sourcePath : String, source : String } -> msg) -> Sub msg
