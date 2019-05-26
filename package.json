@@ -1,10 +1,10 @@
 {
-  "name": "@mgriffith/elm-markup",
+  "name": "elm-markup",
   "version": "0.1.0",
   "description": "Command Line Interface to Elm Markup.",
   "main": "lib.js",
   "bin": {
-    "elm-markup": "./runners/node/cli.js"
+    "elm-markup": "bin/elm-markup"
   },
   "repository": {
     "type": "git",
