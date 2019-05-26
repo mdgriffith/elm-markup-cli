@@ -2,6 +2,8 @@
 
 Check your elm-markup files (`*.emu`) for errors using any [elm-markup](https://package.elm-lang.org/packages/mdgriffith/elm-markup/latest/) documents you have defined in your elm code.
 
+It requires `elm-markup` version 3.0 or later.
+
 ## Installation
 
 ```shell
