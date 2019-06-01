@@ -17,13 +17,8 @@ let _ = require('lodash');
 let finder = require('./finder.js');
 let Generate = require('./generate.js');
 let Find = require('./lib/Find.js');
-const microtime = require('microtime');
 
 let track = [];
-
-function timeCheckpoint(name) {
-  track.push({ name: name, time: microtime.now() })
-}
 
 function relativize(tracked) {
   let len = tracked.length;
