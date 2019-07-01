@@ -8,7 +8,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/mgriffith/elm-markup-cli.git"
+    "url": "git+https://github.com/mdgriffith/elm-markup-cli.git"
   },
   "keywords": [
     "elm",
@@ -18,9 +18,9 @@
   "author": "Matthew Griffith <mdg.griffith@gmail.com>",
   "license": "BSD-3-Clause",
   "bugs": {
-    "url": "https://github.com/mgriffith/elm-markup-cli/issues"
+    "url": "https://github.com/mdgriffith/elm-markup-cli/issues"
   },
-  "homepage": "https://github.com/mgriffith/elm-markup-cli#readme",
+  "homepage": "https://github.com/mdgriffith/elm-markup-cli#readme",
   "dependencies": {
     "chalk": "^2.4.1",
     "command-line-args": "^5.0.2",
